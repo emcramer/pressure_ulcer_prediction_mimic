@@ -1,0 +1,293 @@
+%\documentclass[wsdraft]{ws-procs11x85}
+
+\documentclass{ws-procs11x85}
+\usepackage{ws-procs-thm}           
+\usepackage{lipsum}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{soul,color} 
+\usepackage{booktabs}
+\usepackage[table,xcdraw]{xcolor}
+\usepackage{adjustbox}
+\begin{document}
+\title{ \Large Predicting the incidence of pressure ulcers in the intensive care unit using machine learning}
+\vspace{-7mm}
+\section{Introduction}
+
+Pressure ulcers (PUs) represent a significant public health issue, afflicting intensive care units (ICUs) internationally \cite{reddy}. PUs occur when the skin is exposed to pressure and shear, typically as a result of long term patient immobilization, causing injury to the epidermis and underlying tissues. The prevalence of PUs in ICUs has been estimated between 22-49\% \cite{tayyib2,shahin}. An ulcer can significantly extend a patient’s length of stay in the hospital, and can cause long term disability, with muscles and other deep tissues often impaired for months after the resolution of the external wound \cite{morehead}. PUs cause chronic morbidity through pain and associated psychological impacts; however, they are also responsible for significant mortality, typically as a consequence of sepsis following bacterial inoculation to the bloodstream via the ulcer.\\
+
+\noindent
+PUs are, however, eminently preventable and treatable in their early stages. Consequently, the reduction of PUs in acute care has been identified by the National Quality Forum (NQF) and the Agency for Healthcare Research and Quality (AHRQ) as an important quality metric, and both agencies have published frameworks for tackling this issue \cite{nqf,ahrq}. Prophylactic measures for PUs include regular patient rolling, specialized pressure mattresses (e.g. powered active air and hybrid air surfaces), and good patient nutrition \cite{rollingrct,surface}. Management of established ulcers includes pressure dressings (hydrocolloid, foam, and film), wound cleansers, negative pressure therapy, ultrasound therapy, and surgical intervention \cite{mgmt}. To reduce PU incidence, it is critical to identify at-risk patients and intervene early. As many of these therapies are labor-intensive or expensive (e.g. pressure mattresses), allocating resources according to patient risk is an important clinical challenge.\\
+
+\noindent
+Several risk stratification methods have been developed, including the Norton (1965), Waterlow (1985), and Braden (proposed in 1987) scales. These are nurse-reported scores that combine local skin factors (such as moisture, friction and shear) with patient-level factors (such as mobility, sensory perception and nutrition) \cite{pancorbo}. The sensitivity and specificity of these risk scores in predicting the later development of PUs is highly variable \cite{cho3}. For example, a survey of 7,800 ICU patients found that the best performance of the Braden score yielded an area-under-the-curve (AUC) of only 0.67 \cite{hyun}. One Brazilian study found that although the Braden score had poor prognostic accuracy, its performance could be increased by including a broader range of patient-level factors \cite{ranza}. These variables included: age, gender, comorbidities (specifically diabetes, hematological malignancies, and peripheral artery disease), hypotension, renal replacement therapy and mechanical ventilation within the first 24 hours of admission. Most of these data are recorded in the EHR, raising the possibility to build more powerful predictive models using a broader range of variables than the traditional manual risk scores. This aligns with a recent meta-analysis of 17 studies evaluating these scores, which called for the development of more personalized risk algorithms \cite{riskscores}.\\
+
+\noindent
+There have been several early attempts to model the incidence of PUs with statistical methods. Kaewprag \emph{et al.} used Bayesian nets to classify patients based on the presence of an ulcer, achieving good specificity but poor sensitivity, consistently below 0.5 \cite{ohio}. Park \emph{et al.} performed multivariate linear regression on 61 clinical and laboratory variables to predict time-to-ulcer onset in 202 patients with PUs \cite{ehr2}. Additionally, Cho \emph{et al.} developed a Bayesian net to predict PUs based on 37 structured elements derived from the EHR \cite{cho}. Most of these algorithms do not deal well with time-dependence - focusing more on classifying PU versus non-PU patients for the purpose of identifying risk factors, rather than predicting ulcer development after an index time. The exception is Cho \emph{et al.} - the only study to date which has developed a risk model framed as a decision support tool. To our knowledge, it is also the only algorithm deployed in practice - during a trial in 2010 in South Korea - where investigators observed a significant reduction in PU incidence from 21\% to 4\%. \\
+
+\noindent
+The majority of previous studies characterizing PUs in the ICU have used manual audits of clinical notes to profile relatively small patient cohorts. For example, the number of PU patients in study cohorts varied between 16 and 140 in audits conducted by numerous studies \cite{cooper,sayar,lena2}. Very limited work has been done to automatically extract PU information using structured EHR data. This is despite the increasingly widespread use of template-based reporting systems for nurse skin examinations, and the fact that EHR-derived PU data has consistently been found to more accurately represent the prevalence of ulcers than clinical progress notes \cite{lena, ahmad}. ICUs have the highest rates of hospital acquired ulcers; however, only one study to date has utilized ICU-specific EHR data at scale to characterize the disease burden of pressure injury \cite{ohio}. \\
+
+\noindent
+To address these gaps in literature, we conducted a study to predict PU in the ICU using EHR structured data. The first aim is a large-scale descriptive study of PUs in an observational ICU dataset. This forms the basis for the second objective - developing a machine learning model to predict PU development. To our knowledge, this is the first predictive model for PUs built on EHR data from an ICU in the US, and will make use of the largest training dataset to date (for comparison, Kaewprag \emph{et al.} had 590 cases and 7,127 controls)\cite{ohio}. Specifically, the study aims to predict future PU development using data from the first 24h of ICU admission, as a means to risk stratify patients early in their care. 
+
+\newpage
+\section{Materials and Methods}
+Our study consisted of four key components: (1) identifying a cohort of patients who develop PUs in the ICU; (2) descriptive statistics comparing the PU versus non-PU populations; (3) assessing the prognostic value of the Braden score within the first 24h of admission for future PU development (to benchmark routine practice); and (4) training and evaluating a range of machine learning classifiers to predict future PU development using EHR data from the first 24h of admission. We outline each of these steps below. 
+
+\subsection{Data}
+MIMIC-III (v1.4) is a publicly-accessible database of de-identified EHR data for approximately 54,000 patients admitted to the ICU of Beth Israel Deaconess Medical Center between 2001 and 2012\cite{mimic}. The database includes tables for chart events (such as vital signs), medications, diagnosis codes, laboratory measurements, observations and notes recorded by care providers. EHR data are linked to 12-month out-of-hospital survival data obtained from social security records. MIMIC-III spans two EHR recording systems: in 2008 the Beth Israel Deaconess Medical Center switched from the Carevue (Philips Healthcare, Cambridge MA) to the Metavision system (iMDSoft, Wakefield MA). Data were extracted from both systems to create two separate datasets: a collective set of all data, and a Carevue only dataset (since richer data about Braden score were available for these patients). Patients aged  under 18 years  were excluded (Figure 1). 
+
+\subsection{Cohort identification \& descriptive statistics}
+PUs were identified using the following `ITEM\_ID' codes for PU staging in the `CHARTEVENTS' table of MIMIC: 551, 552, 553 for Carevue; 224631, 224965, 224966 for Metavision. PUs recorded at stage 2 or above, representing an injury to the dermis, were counted as ulcers. Stage 1 PUs, characterized by redness of the skin with no epidermal breach, were not counted as ulcers as this was deemed to be a highly subjective finding. In total, there were 4,174 ICU admissions where a stage 2 or greater PU was recorded, accounting for 7.8\% of all admissions. For our prediction task, patients with a PU recorded within the first 24h of ICU admission were excluded (2,001 distinct patients, 2484 ICU stays) because the goal was to risk-stratify patients without a chronic ulcer. Patients who developed a PU after the initial 24h window were classified as cases. This yielded 1690 cases (1,606 distinct patients) and 49,161 control admissions (36,561 patients). Descriptive statistics were calculated for these populations with each ICU admission counted as a distinct samples. Populations were compared using two sample t-tests for continuous variables and chi-square tests for categorical variables.
+
+
+\subsection{Prognostic evaluation of Braden score}
+For the Carevue patients, where 93.5\% of ICU admissions had Braden score documented within 24h, we evaluated the performance of standard Braden score thresholds for high and severe risk ($\leq12$ and $\leq9$ respectively) in predicting future PU development. 
+
+%\begin{figure}[H]
+ % \centering
+  %\includegraphics[width=1.0\textwidth]{figures/mimiciii-chart.png}
+  %\caption{\label{fig-mimiciii}\footnotesize Schematic of the MIMIC III database.}
+%\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/egems_fig1.png}
+  \caption{\footnotesize Flow diagram of cohort selection with exclusion criteria.}
+\end{figure}
+
+
+
+\subsection{Feature engineering}
+The design of our prediction task is illustrated in Figure 2. Data from the first 24h post ICU admission were used to generate a feature vector in order to predict, as a binary outcome, the occurrence of a PU in the remainder of that admission. A wide range of demographic, clinical, laboratory and environmental features were used to populate the feature vector. The rationale behind feature engineering was to use only common variables that could be readily extracted from the EHR at the 24h timepoint, taking into account known risk factors for PU \cite{cox}. Features with greater than 80\% missingness were not included (consequently, variables such as C-reactive protein were excluded). Braden score data were not used in the original feature vectors, with the intention to determine if EHR-derived model could match or outperform nurse-calculated Braden scores. 
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1.05\textwidth]{figures/egems_fig2.png}
+  \label{fig-feature-eng}
+  \caption{\footnotesize Feature engineering using multiple data sources from the first 24h of ICU admission.}
+\end{figure}
+
+\newpage
+\noindent
+A total of 40 features were used to populate the feature vectors (Table 1, excluding the asterisked variables). Demographic features included age, gender and ethnicity. Physiological features included specific vitals (mean arterial pressure (MAP), peripheral oxygen saturation (SpO$_{2}$) and Glasgow Coma Scale (GCS), which were averaged across the first 24h. Results outside of physiological bounds, as deemed by a critical care physician, were censored. Laboratory features included complete blood counts, electrolytes, albumin, arterial blood gases, blood urea nitrogen, bilirubin, blood glucose and international normalized ratio (INR), with the most recent result within the 24h time window used. The patient's ventilation status was encoded as: no ventilation, non-invasive ventilation or mechanical ventilation, with the highest level during the first 24h used. \\
+
+\noindent
+Comorbidities were evaluated by mapping International Classification of Diseases (ICD) codes from the current and previous admissions to 10 high-level diagnoses: anemia, coronary artery disease, amputation, heart failure, diabetes, leukemia, neuropathy, peripheral vascular disease, spinal cord injury and stroke. These comorbidities were chosen because of known associations with PU development, either due to immobility or impaired wound healing. Our reasoning for using ICD codes from the present admission was that these conditions are all chronic. Even when an ICD is assigned at discharge, it would likely have been present in the problem list of a patient even within the first 24h. If a patient had a previous ICU admission, a recording of stage 2 or greater PU during that admission was encoded as a specific feature. Additional features included the patient's previous ward location, current ICU ward, and the duration from hospital admission to ICU admission. Features were harmonized across the Metavision and Carevue datasets. The range and missingness of features were evaluated in consultation with clinical mentors, with an iterative process for refining the scope of features selected. 
+
+\subsection{Classifier training}
+Figure \ref{fig-modeling-pipeline} shows the model development pipeline. Models were built using both the entire dataset, and the Carevue data only. We trialled both median imputation and k-nearest neighbors imputation (with 5 nearest neighbors) to populate missing values. Results are reported for median imputation as this method showed superior performance overall. For regression models, categorical variables were dummy coded using full-rank encoding, except for ICD codes which were encoded with one-hot encoding. Continuous variables were standardized. \\
+
+\noindent
+Data were split into training and test sets with an 80:20 ratio. The following classifiers were trained using 5-fold cross-validation on the training set over a standard search grid of hyperparameters: logistic regression (LR), elastic net, support vector machine with a linear kernel (SVM), random forest (RF), gradient boosting machine (GBM), and a feed-forward neural network with a single hidden layer. During cross-validation, classifiers were optimized on Cohen's kappa score - a measure of variability between the expected and observed accuracy that better accounts for class imbalance (3.3\% PUs) \cite{kappa}. Model performance is reported as precision and recall on the test set. \\
+
+\noindent
+We cross-validated each classifier with a range of minority class sampling techniques including class weightings, up-sampling the minority class, down-sampling the majority class, and Synthetic Minority Oversampling Technique (SMOTE). As above, each classifier was tuned with 5-fold cross validation and the final model was evaluated on the test set. \\
+
+\noindent
+As a final experiment, the optimal classifier was re-trained using Braden score parameters in addition to the original predictor variables. This included the overall Braden score as well as scores for the six sub-components: mobility, activity, moisture, shear, nutrition and sensory. Cross-validation and test set validation were as described above. 
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/modeling-pipeline.png}
+  \caption{\label{fig-modeling-pipeline}\footnotesize Classifier training pipeline illustrating the range of models and sampling techniques used. }
+\end{figure}
+
+\section{Results}
+
+\subsection{Patient characteristics}
+Table 1 compares a range of demographic and clinical features between the PU (post 24h) and non-PU populations, with each admission counted as distinct. The mean weight and age were higher among patients with PUs, as was the median length of stay. Additionally, PU patients had higher rates of ventilatory support (both non-invasive and mechanical ventilation), lower mean arterial pressure and lower arterial oxygen pressure. Of these 1690 PU patients, the median time to onset was 4.2 days post ICU admission and 29.6\% demonstrated healing during the ICU, as evidenced by a reduction in stage between the final-recorded stage and maximum stage. 
+
+
+\subsection{Prognostic performance of Braden score}
+Figure \ref{braden-hist} shows the distribution of Braden scores at 24h across the Carevue population. Figure \ref{fig-braden} shows the precision and recall of various thresholds of the Braden score at 24h in predicting future PU development. High risk is defined as a score of 12 or below and severe risk as 9 or below \cite{braden,braden2}. The high-risk threshold had precision 0.09 and recall 0.50; while the severe-risk threshold had precision 0.15 and recall 0.08. 
+
+\begin{table}[H]
+\centering
+\caption{My caption}
+\label{tableone}
+\footnotesize{ Table 1.  Demographic and clinical features compared between the PU and non-PU populations. (Features marked with an asterisk were not used as predictor variables.)}
+\\
+\vspace{4mm}
+\begin{adjustbox}{width=1\textwidth}
+\begin{tabular}{llllll}
+\toprule                                   & \textbf{No ulcer (n = 49161)} & \textbf{Ulcer (n = 1690)} & \textbf{P value} & \textbf{\% missingness}  & \\
+                                             
+\textbf{Demographics}                        &                                         &                                     &                  &                         &  \\
+\hspace{1cm} Age (years, mean, SD)                        & 63.7 (17.2)                             & 66.5 (15.4)                         & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Gender (\% male)                             & 56.2                                      & 60.0                                  & 0.002            & 0                       &  \\
+\hspace{1cm} Weight (kg, mean, SD)                        & 83.6 (25)                                 & 87.0 (31)                             & \textless 0.001  & 40                      &  \\
+\hspace{1cm} Ethnicity (\%)                               &                                         &                                     & \textless 0.001  & 0                       &  \\
+\hspace{2cm} Asian                                        & 2.4                                     & 1.6                                 &                  &                         &  \\
+\hspace{2cm} Black                                        & 9.5                                     & 7.5                                 &                  &                         &  \\
+\hspace{2cm} Hispanic                                     & 3.4                                     & 2.7                                 &                  &                         &  \\
+\hspace{2cm} Other                                        & 2.5                                     & 1.7                                 &                  &                         &  \\
+\hspace{2cm} Unknown                                      & 10.5                                    & 12.7                                &                  &                         &  \\
+\hspace{2cm} White                                        & 71.6                                    & 73.8                                &                  &                         &  \\
+\hspace{1cm} Insurance status (\%)                               &                                         &                                     & \textless 0.001  & 0                       &  \\
+\hspace{2cm} Public                                        & 66.6                                    & 71.2                                &                  &                         &  \\
+\hspace{2cm} Private                                        & 32.3                                      & 28.2                                 &                  &                         &  \\
+\hspace{2cm} Uninsured                                     & 1.2                                     & 0.5                                 &                  &                         &  \\
+\textbf{Admission}                        &                                         &                                     &                  &                         &  \\
+\hspace{1cm} Length of stay* (days, median, IQR)              & 2.1 (3)        & 11.5 (16)                         & \textless 0.001  & 0.006                   &  \\
+\hspace{1cm} Time from hospital to ICU admission (days, median, IQR)              & 0.03 (1)        & 0.08 (3)                         & \textless 0.001  & 0                   &  \\
+\hspace{1cm} No prior admission with ulcer (\%)           & 25.4                                    & 33.8                                & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Admitting ICU ward              & NA        & NA                         & \textless 0.001  & 0                   &  \\
+\hspace{1cm} Stage 1 PU in first 24h (\%)   & 1.2                                      & 11.1                      & \textless 0.001               & NA   &                      \\
+\hspace{1cm} Pressure reduction device   & 1.2                                      & 6.2                      & \textless 0.001               & NA   &                      \\
+\hspace{1cm} Time to ulcer onset* (median, IQR)            & NA                                      & 4.2 (7.1)                      & NA               & NA                      &  \\
+\hspace{1cm} Ulcer healing* (\%)             & NA                                      & 29.6                    & NA               & NA                      &  \\
+\hspace{1cm} Braden score* (median, IQR)                      & 15.0 (4)                              & 13.0 (3)                          & \textless 0.001  & 47                      &  \\
+\hspace{1cm} Noninvasive ventilation (\%)                 & 3.5                                     & 3.4                                 & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Mechanical ventilation (\%)                  & 39.4                                    & 67.9                                & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Mortality within 12 months* (\%)              & 41.6                                      & 55.9                                  & \textless 0.001  & 0                       &  \\
+\textbf{Physiology (mean, SD)}               &                                         &                                     &                  &                         &  \\
+\hspace{1cm} Glasgow Coma Score (GCS)               & 12.3 (3.3)                              & 9.6 (3.7)                           & \textless 0.001  & 45                      &  \\
+\hspace{1cm} Mean arterial pressure (MAP) (mmHg)               & 79 (12)                                 & 76 (12)                             & \textless 0.001  & 44                      &  \\
+\hspace{1cm} Oxygen saturation (\%)           & 97 (2)                                  & 97 (2)                              & 0.3              & 44                      &  \\
+\hspace{1cm} Arterial pO$_2$ (mmHg)                            & 163 (71)                                & 148 (57)                            & \textless 0.001  & 67                      &  \\
+\hspace{1cm} Arterial pCO$_2$ (mmHg)                          & 41 (9)                                  & 41 (10)                             & 0.6              & 67                      &  \\
+\hspace{1cm} Hemoglobin (g/dL)                               & 10.8 (1.8)                              & 10.3 (1.6)                          & \textless 0.001  & 6                       & \\
+\hspace{1cm} Hematocrit (\%)                               & 31.8 (5)                              & 30.6 (4)                          & \textless 0.001  & 37                       &  \\
+
+\hspace{1cm} White blood cell count         & 11.8 (9)                              & 13.9 (10)                          & \textless 0.001               & 11                      &  \\
+\hspace{1cm} Neutrophils (\%)         & 78.8 (15)                              & 79.5 (15)                          & 0.45             & 11                      &  \\
+\hspace{1cm} Platelet count                    & 218 (111)                          & 218 (125)                      & 0.9              & 11                      &  \\
+\hspace{1cm} Blood glucose (mg/dL)                                & 138 (50)                                & 148 (57)                            & \textless 0.001  & 10                      &  \\
+\hspace{1cm} Sodium (mmol/L)                                      & 138 (4)                                 & 138 (5)                             & 0.1            & 1                       &  \\
+\hspace{1cm} Potassium (mmol/L)                                   & 4.1 (0.6)                               & 4.2 (0.6)                           & 0.3              & 1                       &  \\
+\hspace{1cm} Creatinine  (mg/dL)                                 & 1.4 (1.5)                               & 1.8 (1.6)                           & \textless 0.001  & 1                       &  \\
+\hspace{1cm} BUN  (mg/dL)                                 & 24.4 (20)                               & 34.7 (25)                           & \textless 0.001  & 1                       &  \\
+\hspace{1cm} Albumin (g/dL)                                       & 3.1 (1.2)                               & 2.8 (0.6)                           & \textless 0.001  & 77                      &  \\
+\hspace{1cm} Total bilirubin (mg/dL)                                 & 1.9 (4)                               & 2.6 (6)                           & 0.02  & 70                     &  \\
+\hspace{1cm} Troponin (ng/mL)                 & 1.2 (4)                        & 1.1 (4)                            & 0.7               & 74                      &  \\
+\hspace{1cm} INR                  & 1.5 (1)                        & 1.6 (1)                            & \textless 0.001               & 29                      &  \\
+\textbf{Chronic diseases (\%)}                      &                                         &                                     &                  &                         &  \\
+\hspace{1cm} Diabetes                                     & 27                                      & 22                                  & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Neuropathy                                   & 5                                       & 4                                   & 0.2         & 0                       &  \\
+\hspace{1cm} Peripheral vascular disease                  & 27                                      & 22                                  & \textless 0.001  & 0                       &  \\
+\hspace{1cm} Amputation                                   & 0.1                                     & 0                                   & 0.7              & 0                       &  \\
+\hspace{1cm} Spinal cord injury                           & 0.2                                     & 0.1                                 & 0.9              & 0                       &  \\
+\hspace{1cm} Coronary artery disease                      & 4                                       & 4                                   & 0.9              & 0                       &  \\
+\hspace{1cm} Leukemia                                     & 1                                       & 1                                   & 0.5              & 0                       &  \\
+\hspace{1cm} Stroke                                       & 1.5                                     & 1.2                                 & 0.4              & 0                       &  \\
+\hspace{1cm} Heart failure                                & 27                                      & 25                                  & 0.03             & 0                       &  \\
+\hspace{1cm} Anemia                                       & 18                                      & 14                                  & \textless 0.001  & 0                       &  \\
+                                             &                                         &                                     &                  &                         & 
+\end{tabular}
+\end{adjustbox}
+\end{table}    
+    
+    
+    
+
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.5\textwidth]{figures/braden_hist.png}
+  \caption{\label{braden-hist}\footnotesize Histogram of Braden scores measured within the first 24h of admission for Carevue patients (range 6-23).}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.55\textwidth]{figures/braden-precision-recall.png}
+  \caption{\label{fig-braden}\footnotesize Precision and recall at various thresholds of Braden score (measured within 24h) in predicting future PU development.}
+\end{figure}
+
+\newpage
+\subsection{Classifier performance}
+The optimal classifier on the entire dataset was a logistic regression model, which also had precision 0.09 and recall 0.71. The optimal classifier on the Carevue-only dataset was a single layer neural network with model weights, which showed precision 0.09 and recall 0.70 on the test set; followed by a  weighted logistic regression with precision 0.09, recall 0.67. \\
+
+\noindent
+The performance of tuned models on the test set is shown in Table 2. Many of the models operated as majority classifiers in the unweighted scenario, labeling every case as a non-ulcer. Kappa score, and performance of the test set, tended to increase when trained with model weights or SMOTE sampling. 
+
+\begin{table}[h]
+\centering
+\footnotesize{ Table 2.  Classifier performance on Carevue-only and all data, based on raw training data (unweighted), model class weights (weighted) or synthetic minority oversampling (SMOTE).} 
+\vspace{4mm}
+\\ 
+\label{tabletwo}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\multicolumn{7}{c}{\cellcolor[HTML]{EFEFEF}\textbf{CAREVUE (n=28,886)}} \\ \midrule
+ & \multicolumn{2}{c}{UNWEIGHTED} & \multicolumn{2}{c}{WEIGHTED} & \multicolumn{2}{c}{SMOTE} \\
+ & \multicolumn{1}{l}{\textit{Precision}} & \multicolumn{1}{l}{\textit{Recall}} & \multicolumn{1}{l}{\textit{Precision}} & \multicolumn{1}{l}{\textit{Recall}} & \multicolumn{1}{l}{\textit{Precision}} & \multicolumn{1}{l}{\textit{Recall}} \\
+BRADEN SCORE & 0.09 & 0.50 &  &  &  &  \\
+LR & 0.1 & 0.005 & 0.09 & 0.67 & 0.12 & 0.49 \\
+Elastic Net & 0.11 & 0.005 & 0.09 &  0.67 & 0.13 & 0.48 \\
+SVM & NA & 0 & NA & 0 & 0.12 & 0.48 \\
+RF & 0.33 & 0.02 & 0.30 & 0.02 & 0.18 & 0.17 \\
+GBM & 0.11 & 0.18 & 0.04 & 0.91 & 0.16 & 0.36 \\
+Neural net & 0.33 & 0.01 & 0.09 & 0.70 & 0.11 & 0.52 \\
+ & \multicolumn{1}{l}{} & \multicolumn{1}{l}{} & \multicolumn{1}{l}{} & \multicolumn{1}{l}{} & \multicolumn{1}{l}{} & \multicolumn{1}{l}{} \\
+\multicolumn{7}{c}{\cellcolor[HTML]{EFEFEF}\textbf{ALL DATA (n=50,851)}} \\
+LR & 0.67 & 0.006 & 0.09 & 0.71 & 0.12 & 0.46 \\
+Elastic Net & 0.67 & 0.006 & 0.09 & 0.70  & 0.12 &  0.46\\
+SVM & NA & 0 & NA & 0 & 0.12 & 0.44 \\
+RF & NA & 0 & 0.33 & 0.006 & 0.18 & 0.28 \\
+GBM & 0.11 & 0.18 & 0.04 & 0.94 & 0.17 & 0.38 \\
+Neural net & 0.06 & 0.006 & 0.09 & 0.70 & 0.11 & 0.49 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Feature importances}
+Table 3 shows the standardized regression coefficients of the top 10 predictors in two of the highest performing models, ranked based on the absolute value of the t-statistic for each model parameter with the standardized regression coefficient shown. Multiple features are represented in both, including stage 1 PU, GCS, blood urea nitrogen (BUN), paO$_2$, and albumin. \\
+
+\begin{table}[H]
+\label{tab-featimp}
+\centering
+\footnotesize{ Table 3.  Top 10 features for the weighted logistic regression models trained on Carevue data (left) and on all data (right) based on relative variable importance.} 
+\vspace{4mm}
+\\
+\begin{tabular}{@{}lclc@{}}
+\toprule
+Weighted Logistic Regression
+\multicolumn{2}{c}{Carevue} & \multicolumn{2}{c}{All data} \\ \midrule
+\multicolumn{1}{c}{\textit{Variable}} & \textit{Standardized coeff.} & \textit{Variable} & \multicolumn{1}{l}{\textit{Standardized coeff.}} \\
+Stage 1 PU within first 24h & 2.0 & GCS & -0.65 \\ GCS & -0.46 & Stage 1 PU within first 24h & 2.1 \\
+BUN & 0.28 & BUN & 0.40 \\ paO$_2$ & -0.36 & paO$_2$ & -0.37\\
+Cardiac Surg. Recovery Unit & -0.79 & Cardiac Surg. Recovery Unit & -0.88 \\ Albumin & -0.39 & Albumin & -0.41 \\
+Medical ICU & -0.59 & Hemoglobin & -0.54 \\ Pressure reduction device & 0.89 & Medical ICU & -0.53 \\
+Mechanical ventilation & 0.61 & Pressure reduction device & 1.1 \\ Mean arterial pressure & -0.19 & Mean arterial pressure &  -0.17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Classifier with Braden}
+When Braden features were integrated into the feature matrix, the optimal classifier on Carevue data, the weighted logistic regression,  showed essentially unchanged performance relative to the classifier without Braden data - precision 0.09, recall 0.68.
+
+\section{Discussion}
+In this large EHR-based study, we demonstrate that a weighted logistic regression using 40 EHR-derived features from the first 24h of an ICU admission outperformed the nurse-calculated Braden score in recall and matched its precision. Given the recall boost, this type of EHR-based classifier may have utility as an automated screening tool for PUs early in a patient's admission. Preventing a PU in a high-risk patient is more effective and less costly than treating an evolving PU. Moreover, interventions such as frequent rolling and foam padding are relatively low-cost, increasing our tolerance for false positives. This work provides a clear example of how routinely collected EHR data can inform the design of care protocols.
+\\
+
+\noindent
+The logistic regression model is interpretable and allows clinicians to better understand the impact of demographic and physiological factors on PU development. Important features were broadly consistent with domain knowledge and clinical intuition surrounding PUs. For example, it is intuitive that mechanical ventilation, low GCS, low albumin, and oxygen saturation would be positively associated with PU development as they are proxies for immobility, impaired nutrition, and poor wound healing. Intuitively, the observation of a stage 1 PU within the first 24h was a strong predictor of future development of more severe PUs. The time between hospital admission and ICU admission was also positively correlated, supporting the hypothesis that longer patient stays on the wards prior to ICU admission are associated with PU incidence. Interestingly, the model identified that admission to certain units within the ICU (e.g. medical versus surgical) was associated with downstream PU incidence, highlighting high-performing units whose pressure care protocols might be emulated. 
+\\
+
+\noindent
+Including Braden features in the model did not improve performance, suggesting that the Braden scoring system does not add significant information to the EHR-based algorithm. As Kaewperg \emph{et al.} describe, Braden subscales for activity, nutrition, mobility, sensory perception, and moisture are often not useful predictors because they tend to have similar values among ICU patients \cite{ohio}. By incorporating a broader range of EHR-derived features, our model can be used to capture risk factors that meaningfully differ between patients with critical illness, and thereby achieve better discrimination of risk status. Additionally, an EHR-based model removes the need for nurses to manually calculate Braden risk scores, which is time consuming, subjective, and can easily be overlooked. \\
+
+\noindent
+The descriptive statistics provide a unique insight into the burden of PUs in a tertiary ICU, using EHR data alone. The prevalence of PUs has been quoted as high as 49\%, however we find 7.8\% of admissions have a PU of stage 2 or higher. Of the 1690 PU cases that developed after 24h (which removes chronic PUs), 29.6\% demonstrate healing during the patient's admission (defined as a final PU stage less than the maximum recorded stage), which is a metric not previously investigated in EHR data.
+\\
+
+\noindent
+Our study is subject to some limitations. First, the underlying pathophysiology of PUs may simply not be reflected in EHR data, making it a particularly challenging prediction task. The main driver of PUs is consistent skin pressure over bony prominences \cite{cox}, and although we can find proxies in the EHR for immobility and impaired healing, these are surrogate features that do not directly capture the pressure waveform on, for example, a patient's sacrum. This makes it very challenging to predict future onset of pressure injury. Second, the EHR features that are available are affected by missingness. For example, a significant proportion of the population are missing height and weight data, preventing the calculation of Body Mass Index (BMI), an important risk factor in PU development. Third, there was a significant class imbalance in our study design, with only 3.3\% of cases developing a PU. Many of the classifiers defaulted to predicting the majority class. This was addressed with selection of kappa score as the optimization metric, along with several class re-balancing techniques; however we only observed incremental performance improvements. Fourth, our study was based on a large, academic tertiary medical center, and may not be representative of smaller community facilities where the implementation of PU prevention guidelines may be more variable. Fifth, our cohort ended in 2012, and important trends in public health have occurred in the interval. The prevalence of obesity, a major risk factor for PUs, did not increase in the overall US population during the time period of data collection \cite{pmid22253363} but has increased both in the US and in other countries in the intervening period \cite{pmid30155850}. While this can affect model performance, it also makes PU prevention increasingly important. In the same vein, new treatments for PUs have been introduced in the interim, for example foam mattresses with a range of pressure settings and alternating-pressure overlays \cite{pmid30307602}. 
+\\
+
+\noindent 
+Future work will involve an iterative process of feature engineering and model tuning to increase the precision of our classifier. A higher precision model could help to inform the allocation of expensive prophylactic resources such as pressure support mattresses. Additionally, the model must be deployed as a clinical decision support tool, as in Cho \emph{et al.}, to fully evaluate its impact on PU incidence. This is the practical benchmark for utility, beyond precision and recall scores \cite{cho}. Although this experiment had significant clinician input throughout model design (including from practising intensivists and ICU nursing staff), its safety and clinical utility must be assessed before translation into a decision support tool. Future work should also include assessing the extensibility of the model to other centers, given the ubiquity of EHRs and the commonplace use of the covariates used in this model.
+\\
+
+\section{Conclusion}
+In this paper we develop a model for predicting future PU development at 24h, which outperforms the commonly used, resource-intensive Braden scale. This model uses EHR data elements and could be a means to automatically screen patients for PU risk early in an ICU admission, either as an adjunct to, or substitute for, repeated manual Braden scoring by nurses. The optimal models show an association between PU development and EHR-derived proxies for immobility (e.g. spinal cord injury and low GCS), nutritional status (e.g. low albumin) and impaired skin healing, (e.g. low paO$_2$). While additional refinement of our model is warranted, implementation of this kind of EHR-based model as a decision support tool may decrease the incidence of PUs, as has been demonstrated in other literature. Data-driven risk stratification may be a means to inform resource allocation and improve quality across ICUs internationally.
+
+\section{Acknowledgments}
+Thanks to Stephen Ruoss, MD and Chungmei Shih, RN for clinical guidance, and to Ben Marafino and Alejandro Schuler for advice on the MIMIC dataset and modeling approaches. Thanks also to the MIMIC team for curating this open dataset. The cohort generation, pre-processing and model code is available in a public github repository ('pressure\_ulcer\_prediction\_mimic').
+\small 
+\bibliographystyle{vancouver}
+\bibliography{PU_bib_egems.bib}
+
+\end{document}
