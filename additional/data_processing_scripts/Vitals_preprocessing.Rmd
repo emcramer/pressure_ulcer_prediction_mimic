@@ -1,0 +1,275 @@
+---
+title: "Pressure Ulcers in ICU"
+author: "Husham Sharifi"
+output: html_notebook
+source data: MIMIC-III
+last modified: June 6, 2018
+---
+
+
+Load environment
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+packages <- c('oddsratio', 'tidyverse', 'plyr', 'dplyr', 'tidyr', 'lubridate', 'stringr', 'readr', 'tableone', 'data.table', 'ggcorrplot', 'pROC', 'caret', 'randomForest', 'skimr')
+lapply(packages, require, character.only = T)
+
+Sys.setenv(TZ='UTC')
+```
+
+####Functions:   
+* parse zip file that was extracted from MIMIC and load it into a dataframe   
+    
+```{r}
+extractData <- function(filename){
+  extracteddata <- read_delim(gzfile(filename), "|", escape_double = FALSE, trim_ws = TRUE)
+  extracteddata <- extracteddata[-c(1, nrow(extracteddata)),] # removing the SQL formatted line
+  return(extracteddata)
+}
+
+```
+
+####Load zip file   
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# Load source table to data frame
+setwd("/Users/hsharifi/Desktop/activeResearch/pressureUlcers")
+dataFile = "bpchartevents.gz"
+
+myData <- extractData(dataFile)
+
+```
+     
+    
+Build MAP dataframe.    
+```{r}
+MAP_target <- c("52", "3312", "456", "443", "225312")
+
+MAP_fields = myData %>%
+            filter(charteventsitemid %in% MAP_target) %>%
+            filter (charteventsvalue < 300 & charteventsvalue > 30)
+
+
+#test = MAP_fields %>% filter (charteventsitemid == '52')
+ggplot(data = MAP_fields, aes(charteventsvalue)) + 
+    geom_histogram() 
+
+detach(package:plyr)
+MAP = MAP_fields %>% 
+              rename(MAP = "charteventsvalue", MAP_charttime = "charteventscharttime", MAP_caregiverid = "caregiverid") %>%
+              select(-c("charteventsvalueuom", "charteventsitemid"))
+
+
+```
+
+    
+    
+    
+Build systolic blood pressure dataframe.    
+```{r}
+SBP_target <- c("442", "225309")
+
+SBP_fields = myData %>%
+            filter(charteventsitemid %in% SBP_target) %>%
+            filter (charteventsvalue < 300 & charteventsvalue > 30)
+
+
+#ggplot(data = SBP_fields, aes(charteventsvalue)) +    geom_histogram() 
+
+SBP = SBP_fields %>% 
+              rename(SBP = "charteventsvalue", SBP_charttime = "charteventscharttime", SBP_caregiverid = "caregiverid") %>%
+              select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+
+```
+
+
+    
+Build diastolic blood pressure dataframe.       
+```{r}
+DBP_target <- c("225310", "8440")
+
+DBP_fields = myData %>%
+            filter(charteventsitemid %in% DBP_target) %>%
+            filter (charteventsvalue < 300 & charteventsvalue > 30)
+
+
+
+DBP = DBP_fields %>% 
+              rename(DBP = "charteventsvalue", DBP_charttime = "charteventscharttime", DBP_caregiverid = "caregiverid") %>%
+              select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+```
+           
+           
+
+Now do the same extraction and representation process for the oxygen data.   
+   
+```{r}
+o2_dataFile = "o2satchartevents.gz"
+#rawDF = read.table(dataFile, header = T, sep = "|", na.strings = "None");
+
+o2Data <- extractData(o2_dataFile)
+```
+        
+        
+Build cutaenous oxygen dataframe.  
+```{r}
+cutaneous_o2_target <- c("646", "834", "220277")
+
+cutaneous_o2_fields = o2Data %>%
+            filter(charteventsitemid %in% cutaneous_o2_target) %>%
+            filter(charteventsvalue < 105) %>%
+            filter(charteventsvalue > 70)
+
+
+#ggplot(data = cutaneous_o2_fields, aes(charteventsvalue)) +    geom_histogram() + xlim(70, 105)
+
+cutaneous_o2 = cutaneous_o2_fields %>% 
+                rename(spO2 = "charteventsvalue", spO2_charttime = "charteventscharttime", spO2_caregiverid = "caregiverid") %>%
+                select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+#write.csv(cutaneous_o2_fields, "cutaneous_o2_fields.csv")
+
+
+
+```
+        
+        
+Build arterial oxgyen dataframe.          
+```{r}
+arterial_o2_target <- c("779", "3785", "4203", "220224")
+
+arterial_o2_fields = o2Data %>%
+            filter(charteventsitemid %in% arterial_o2_target)
+
+
+#ggplot(data = arterial_o2_fields, aes(charteventsvalue)) +  geom_histogram() 
+
+arterial_o2 = arterial_o2_fields %>% 
+              rename(paO2 = "charteventsvalue", paO2_charttime = "charteventscharttime", paO2_caregiverid = "caregiverid") %>%
+              select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+#write.csv(arterial_o2_fields, "arterial_o2_fields.csv")
+```
+       
+       
+Build arterial CO2 dataframe.        
+```{r}
+arterial_co2_target <- c("778", "3784", "220235")
+
+arterial_co2_fields = o2Data %>%
+            filter(charteventsitemid %in% arterial_co2_target) %>%
+            filter(charteventsvalue > 0 & charteventsvalue < 110)
+
+
+#ggplot(data = arterial_co2_fields, aes(charteventsvalue)) +    geom_histogram() + xlim(0,110)
+
+arterial_co2 = arterial_co2_fields %>% 
+              rename(paCO2 = "charteventsvalue", paCO2_charttime = "charteventscharttime", paCO2_caregiverid = "caregiverid") %>%
+              select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+#write.csv(arterial_co2_fields, "arterial_co2_fields.csv")
+```
+      
+      
+Build mixed venous O2 (svO2) dataframe.         
+```{r}
+mixed_venous_target <- c("823")
+
+mixed_venous_fields = o2Data %>%
+            filter(charteventsitemid %in% mixed_venous_target) %>%
+            filter(charteventsvalue > 0 & charteventsvalue < 110)
+
+#ggplot(data = mixed_venous_fields, aes(charteventsvalue)) + geom_histogram() + xlim(0, 110)
+
+mixed_venous_o2 = mixed_venous_fields %>% 
+              rename(svO2 = "charteventsvalue", svO2_charttime = "charteventscharttime", svO2_caregiverid = "caregiverid") %>%
+              select(-c("subject_id", "hadm_id", "charteventsitemid",  "charteventsvalueuom"))
+
+#write.csv(mixed_venous_fields, "mixed_venous_fields.csv")
+
+
+```
+
+
+
+####Joining and making time windows
+    
+    
+Here I do the following:  
+    
+* join the dataframe for each vital sign with the case_control file, the latter containing Braden scores    
+* create a new variable, delta, that takes difference between admission time to the ICU (INTIME) and time when vital sign was documented (charttime)    
+* keep only values taken less than 1 day into the stay   
+* take the mean of each vital sign   
+     
+```{r}
+master_MAP = case_control %>% 
+                left_join(MAP, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(MAP_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_MAP = mean(MAP, na.rm = T))
+
+master_SBP = case_control %>% 
+                left_join(SBP, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(SBP_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_SBP = mean(SBP, na.rm = T))
+
+master_DBP = case_control %>% 
+                left_join(DBP, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(DBP_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_DBP = mean(DBP, na.rm = T))
+
+
+master_spO2 = case_control %>% 
+                left_join(cutaneous_o2, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(spO2_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_spO2 = mean(spO2, na.rm = T))
+
+master_paO2 = case_control %>% 
+                left_join(arterial_o2, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(paO2_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_paO2 = mean(paO2, na.rm = T))
+
+
+master_paCO2 = case_control %>% 
+                left_join(arterial_co2, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(paCO2_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_paCO2 = mean(paCO2, na.rm = T))
+
+
+master_svO2 = case_control %>% 
+                left_join(mixed_venous_o2, by=c('ICUSTAY_ID'='icustay_id')) %>% 
+                mutate(delta = as.numeric(difftime(svO2_charttime,INTIME,units='days'))) %>% 
+                filter (delta < 1) %>%
+                group_by(ICUSTAY_ID) %>%
+                summarise(mean_svO2 = mean(svO2, na.rm = T))
+                
+```
+
+
+Join on the vital signs that are not sparse in a master_vitals dataframe. I do not include the dataframes for systolic and diastolic blood pressure, due to their sparsity. MAP of course has both parameters embedded within it. 
+```{r}
+master_vitals = master_MAP %>% 
+                left_join(master_spO2, by=c('ICUSTAY_ID'='ICUSTAY_ID')) %>%
+                left_join(master_paO2, by=c('ICUSTAY_ID'='ICUSTAY_ID')) %>%
+                left_join(master_paCO2, by=c('ICUSTAY_ID'='ICUSTAY_ID')) 
+
+skim(master_vitals)
+
+write.csv(master_vitals, "master_vitals.csv")
+                
+```
+
+
+
